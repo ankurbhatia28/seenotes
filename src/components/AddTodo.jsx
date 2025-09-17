@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 
 export default function AddTodo({ listId, userId, onTodoAdded }) {
@@ -7,6 +7,15 @@ export default function AddTodo({ listId, userId, onTodoAdded }) {
   const [periodType, setPeriodType] = useState('daily')
   const [customDays, setCustomDays] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Reset form when switching lists
+  useEffect(() => {
+    setTitle('')
+    setIsPeriodic(false)
+    setPeriodType('daily')
+    setCustomDays(1)
+    setIsSubmitting(false)
+  }, [listId])
 
   const handleSubmit = async (e) => {
     e.preventDefault()

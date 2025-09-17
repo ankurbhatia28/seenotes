@@ -24,8 +24,12 @@ export default function TodoApp({ session }) {
       if (data.length === 0) {
         await createDefaultList()
       } else {
-        setLists(data)
-        setActiveListId(data[0].id)
+        // Remove any potential duplicates by ID
+        const uniqueLists = data.filter((list, index, self) =>
+          index === self.findIndex(l => l.id === list.id)
+        )
+        setLists(uniqueLists)
+        setActiveListId(uniqueLists[0].id)
       }
     } catch (error) {
       console.error('Error fetching lists:', error.message)
@@ -59,7 +63,7 @@ export default function TodoApp({ session }) {
 
       if (error) throw error
 
-      setLists([...lists, ...data])
+      setLists(prevLists => [...prevLists, data[0]])
       setActiveListId(data[0].id)
     } catch (error) {
       console.error('Error creating list:', error.message)
@@ -110,12 +114,16 @@ export default function TodoApp({ session }) {
           <AddTodo
             listId={activeListId}
             userId={session.user.id}
-            key={activeListId}
+            key={`add-${activeListId}`}
+            onTodoAdded={() => {
+              // Force a refresh of the TodoList component
+              window.dispatchEvent(new CustomEvent('todoAdded'))
+            }}
           />
           <TodoList
             listId={activeListId}
             userId={session.user.id}
-            key={activeListId}
+            key={`list-${activeListId}`}
           />
         </div>
       )}

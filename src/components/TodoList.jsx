@@ -22,8 +22,15 @@ export default function TodoList({ listId, userId }) {
       })
       .subscribe()
 
+    // Listen for manual refresh events
+    const handleTodoAdded = () => {
+      fetchTodos()
+    }
+    window.addEventListener('todoAdded', handleTodoAdded)
+
     return () => {
       subscription.unsubscribe()
+      window.removeEventListener('todoAdded', handleTodoAdded)
     }
   }, [listId])
 
