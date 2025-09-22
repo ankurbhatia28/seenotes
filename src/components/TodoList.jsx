@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import TodoItem from './TodoItem'
 
-export default function TodoList({ listId, userId }) {
+export default function TodoList({ listId, userId, selectedTags = [], onTagClick }) {
   const [todos, setTodos] = useState([])
   const [loading, setLoading] = useState(true)
+  const [draggedTodo, setDraggedTodo] = useState(null)
+  const [dragOverTodo, setDragOverTodo] = useState(null)
+  const [dragPosition, setDragPosition] = useState(null)
 
   useEffect(() => {
     fetchTodos()
@@ -41,6 +44,7 @@ export default function TodoList({ listId, userId }) {
         .select('*')
         .eq('list_id', listId)
         .order('is_completed', { ascending: true })
+        .order('order_index', { ascending: true })
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -133,17 +137,93 @@ export default function TodoList({ listId, userId }) {
     return true
   }
 
+  const matchesTagFilter = (todo) => {
+    if (selectedTags.length === 0) return true
+    if (!todo.tags || !Array.isArray(todo.tags)) return false
+
+    // OR logic: todo must have at least one of the selected tags
+    return selectedTags.some(selectedTag =>
+      todo.tags.includes(selectedTag)
+    )
+  }
+
+  // Drag and Drop Handlers
+  const handleDragStart = (e, todo) => {
+    setDraggedTodo(todo)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/html', e.target.outerHTML)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedTodo(null)
+    setDragOverTodo(null)
+    setDragPosition(null)
+  }
+
+  const handleDragOver = (e, targetTodo) => {
+    e.preventDefault()
+    if (!draggedTodo || draggedTodo.id === targetTodo.id) return
+
+    const rect = e.currentTarget.getBoundingClientRect()
+    const midpoint = rect.top + rect.height / 2
+    const position = e.clientY < midpoint ? 'top' : 'bottom'
+
+    setDragOverTodo(targetTodo)
+    setDragPosition(position)
+  }
+
+  const handleDrop = async (e, targetTodo) => {
+    e.preventDefault()
+    if (!draggedTodo || draggedTodo.id === targetTodo.id) return
+
+    try {
+      // Get all active todos for reordering
+      const activeTodos = todos
+        .filter(todo => !todo.is_completed && isVisible(todo) && matchesTagFilter(todo))
+        .sort((a, b) => (a.order_index || 0) - (b.order_index || 0))
+
+      // Remove dragged todo from current position
+      const filteredTodos = activeTodos.filter(todo => todo.id !== draggedTodo.id)
+
+      // Find target index
+      const targetIndex = filteredTodos.findIndex(todo => todo.id === targetTodo.id)
+      const insertIndex = dragPosition === 'top' ? targetIndex : targetIndex + 1
+
+      // Insert dragged todo at new position
+      filteredTodos.splice(insertIndex, 0, draggedTodo)
+
+      // Update order_index for all affected todos
+      const updates = filteredTodos.map((todo, index) => ({
+        id: todo.id,
+        order_index: (index + 1) * 1000
+      }))
+
+      // Batch update all todos
+      for (const update of updates) {
+        await updateTodo(update.id, { order_index: update.order_index })
+      }
+
+      // Refresh the todo list
+      await fetchTodos()
+
+    } catch (error) {
+      console.error('Error reordering todos:', error.message)
+    }
+
+    handleDragEnd()
+  }
+
   if (loading) {
     return <div className="loading">Loading todos...</div>
   }
 
-  // Separate and sort todos
+  // Separate and sort todos with tag filtering
   const activeTodos = todos
-    .filter(todo => !todo.is_completed && isVisible(todo))
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .filter(todo => !todo.is_completed && isVisible(todo) && matchesTagFilter(todo))
+    .sort((a, b) => (a.order_index || 0) - (b.order_index || 0))
 
   const completedTodos = todos
-    .filter(todo => todo.is_completed)
+    .filter(todo => todo.is_completed && matchesTagFilter(todo))
     .sort((a, b) => {
       // Sort by is_periodic (periodic items first), then by completion time
       if (a.is_periodic && !b.is_periodic) return -1
@@ -152,7 +232,7 @@ export default function TodoList({ listId, userId }) {
     })
 
   const snoozedTodos = todos
-    .filter(todo => todo.is_snoozed && !isVisible(todo))
+    .filter(todo => todo.is_snoozed && !isVisible(todo) && matchesTagFilter(todo))
 
   return (
     <div className="todo-list">
@@ -172,6 +252,13 @@ export default function TodoList({ listId, userId }) {
               onToggleComplete={() => toggleComplete(todo)}
               onSnooze={(days) => snoozeTodo(todo, days)}
               onDelete={() => deleteTodo(todo.id)}
+              onTagClick={onTagClick}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              isDragging={draggedTodo?.id === todo.id}
+              dragPosition={dragOverTodo?.id === todo.id ? dragPosition : null}
               isCompleted={false}
             />
           ))}
@@ -189,6 +276,7 @@ export default function TodoList({ listId, userId }) {
               onToggleComplete={() => toggleComplete(todo)}
               onUnsnooze={() => unsnoozeTodo(todo)}
               onDelete={() => deleteTodo(todo.id)}
+              onTagClick={onTagClick}
               isCompleted={false}
               isSnoozed={true}
             />
@@ -206,6 +294,7 @@ export default function TodoList({ listId, userId }) {
               daysOnList={0}
               onToggleComplete={() => toggleComplete(todo)}
               onDelete={() => deleteTodo(todo.id)}
+              onTagClick={onTagClick}
               isCompleted={true}
             />
           ))}
