@@ -2,15 +2,41 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 import TodoList from './TodoList'
 import AddTodo from './AddTodo'
+import TagFilter from './TagFilter'
 
 export default function TodoApp({ session }) {
   const [lists, setLists] = useState([])
   const [activeListId, setActiveListId] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [allTags, setAllTags] = useState([])
+  const [selectedTags, setSelectedTags] = useState([])
 
   useEffect(() => {
     fetchLists()
+    fetchAllTags()
   }, [])
+
+  const fetchAllTags = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('todos')
+        .select('tags')
+        .eq('user_id', session.user.id)
+
+      if (error) throw error
+
+      const tagSet = new Set()
+      data.forEach(todo => {
+        if (todo.tags && Array.isArray(todo.tags)) {
+          todo.tags.forEach(tag => tagSet.add(tag))
+        }
+      })
+
+      setAllTags(Array.from(tagSet).sort())
+    } catch (error) {
+      console.error('Error fetching tags:', error.message)
+    }
+  }
 
   const fetchLists = async () => {
     try {
@@ -75,6 +101,23 @@ export default function TodoApp({ session }) {
     if (error) console.error('Error signing out:', error.message)
   }
 
+  const handleTagToggle = (tag) => {
+    setSelectedTags(prev =>
+      prev.includes(tag)
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag]
+    )
+  }
+
+  const handleClearFilters = () => {
+    setSelectedTags([])
+  }
+
+  const handleTodoAdded = () => {
+    fetchAllTags() // Refresh tags when new todo added
+    window.dispatchEvent(new CustomEvent('todoAdded'))
+  }
+
   if (loading) {
     return <div className="loading">Loading your lists...</div>
   }
@@ -115,15 +158,23 @@ export default function TodoApp({ session }) {
             listId={activeListId}
             userId={session.user.id}
             key={`add-${activeListId}`}
-            onTodoAdded={() => {
-              // Force a refresh of the TodoList component
-              window.dispatchEvent(new CustomEvent('todoAdded'))
-            }}
+            onTodoAdded={handleTodoAdded}
+            existingTags={allTags}
           />
+
+          <TagFilter
+            availableTags={allTags}
+            selectedTags={selectedTags}
+            onTagToggle={handleTagToggle}
+            onClearFilters={handleClearFilters}
+          />
+
           <TodoList
             listId={activeListId}
             userId={session.user.id}
             key={`list-${activeListId}`}
+            selectedTags={selectedTags}
+            onTagClick={handleTagToggle}
           />
         </div>
       )}

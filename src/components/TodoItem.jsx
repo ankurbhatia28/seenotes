@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import TagBadge from './TagBadge'
+import DragHandle from './DragHandle'
 
 export default function TodoItem({
   todo,
@@ -8,7 +10,14 @@ export default function TodoItem({
   onUnsnooze,
   onDelete,
   isCompleted,
-  isSnoozed = false
+  isSnoozed = false,
+  onTagClick,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+  isDragging = false,
+  dragPosition = null
 }) {
   const [showSnoozeOptions, setShowSnoozeOptions] = useState(false)
 
@@ -41,9 +50,67 @@ export default function TodoItem({
     }
   }
 
+  const handleDragStart = (e) => {
+    if (onDragStart) {
+      onDragStart(e, todo)
+    }
+  }
+
+  const handleDragEnd = (e) => {
+    if (onDragEnd) {
+      onDragEnd(e, todo)
+    }
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    if (onDragOver) {
+      onDragOver(e, todo)
+    }
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    if (onDrop) {
+      onDrop(e, todo)
+    }
+  }
+
+  const getClassNames = () => {
+    let classes = `todo-item ${isCompleted ? 'completed' : ''} ${isSnoozed ? 'snoozed' : ''}`
+
+    if (isDragging) {
+      classes += ' dragging'
+    }
+
+    if (dragPosition === 'top') {
+      classes += ' drag-over-top'
+    } else if (dragPosition === 'bottom') {
+      classes += ' drag-over-bottom'
+    }
+
+    return classes
+  }
+
   return (
-    <div className={`todo-item ${isCompleted ? 'completed' : ''} ${isSnoozed ? 'snoozed' : ''}`}>
+    <div
+      className={getClassNames()}
+      draggable={!isCompleted}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {dragPosition === 'top' && <div className="drag-placeholder" />}
+
       <div className="todo-main">
+        {!isCompleted && (
+          <DragHandle
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          />
+        )}
+
         <input
           type="checkbox"
           checked={isCompleted}
@@ -66,6 +133,19 @@ export default function TodoItem({
               <span className="snooze-badge">
                 Snoozed until {formatSnoozeDate(todo.snoozed_until)}
               </span>
+            )}
+
+            {todo.tags && Array.isArray(todo.tags) && todo.tags.length > 0 && (
+              <div className="todo-tags">
+                {todo.tags.map((tag, index) => (
+                  <TagBadge
+                    key={index}
+                    tag={tag}
+                    onClick={onTagClick}
+                    isClickable={!!onTagClick}
+                  />
+                ))}
+              </div>
             )}
 
             <span className="created-date">
@@ -121,6 +201,8 @@ export default function TodoItem({
           ))}
         </div>
       )}
+
+      {dragPosition === 'bottom' && <div className="drag-placeholder" />}
     </div>
   )
 }
